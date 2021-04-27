@@ -27,6 +27,7 @@ import co.ghostnotes.sample.list.swipe.model.User
 import co.ghostnotes.sample.list.swipe.databinding.FragmentFirstBinding
 import co.ghostnotes.sample.list.swipe.databinding.ListItemUserBinding
 import co.ghostnotes.sample.list.swipe.util.DummyDataUtil
+import kotlinx.coroutines.flow.collect
 import timber.log.Timber
 import java.lang.IllegalStateException
 import java.lang.UnsupportedOperationException
@@ -69,27 +70,36 @@ class FirstFragment : Fragment() {
         }
 
         swipeActionCallback = SwipeActionCallback(0, LEFT or RIGHT) { _, direction, position ->
-            lifecycleScope.launchWhenCreated {
-                val swipeAction = when (direction) {
-                    LEFT -> {
-                        // DELETE
-                        changeRecyclerViewBackgroundColor(DELETE)
-                        adapter.deleteItem(position)
-                        DELETE
-                    }
-                    RIGHT -> {
-                        // ARCHIVE
-                        changeRecyclerViewBackgroundColor(ARCHIVE)
-                        adapter.archiveItem(position)
-                        ARCHIVE
-                    }
-                    else -> throw IllegalStateException()
+            val swipeAction = when (direction) {
+                LEFT -> {
+                    // DELETE
+                    changeRecyclerViewBackgroundColor(DELETE)
+                    adapter.deleteItem(position)
+                    DELETE
                 }
-
-                swipeActionViewModel.showSnackbar(swipeAction, position)
+                RIGHT -> {
+                    // ARCHIVE
+                    changeRecyclerViewBackgroundColor(ARCHIVE)
+                    adapter.archiveItem(position)
+                    ARCHIVE
+                }
+                else -> throw IllegalStateException()
             }
+
+            swipeActionViewModel.showSnackbar(swipeAction, position)
+
         }.also { callback ->
             ItemTouchHelper(callback).attachToRecyclerView(binding.recyclerView)
+        }
+
+        observeViewModel()
+    }
+
+    private fun observeViewModel() {
+        lifecycleScope.launchWhenStarted {
+            swipeActionViewModel.undoDeletingSwipeAction.collect {
+                adapter.undoDeletedItem()
+            }
         }
     }
 
@@ -119,24 +129,34 @@ class FirstFragment : Fragment() {
         }
     }
 
-    private class SwipeActionAdapter(val users: List<User>) : RecyclerView.Adapter<SwipeActionViewHolder>() {
+    private class SwipeActionAdapter(users: List<User>) : RecyclerView.Adapter<SwipeActionViewHolder>() {
+
+        private val usersInternal = users.toMutableList()
 
         private var lastArchivedListItemIndex: Int? = null
         private var lastArchivedListItem: User? = null
         fun archiveItem(index: Int) {
-            notifyItemRemoved(index)
-
             lastArchivedListItemIndex = index
-            lastArchivedListItem = users.toMutableList().removeAt(index)
+            lastArchivedListItem = usersInternal.removeAt(index)
+
+            notifyItemRemoved(index)
         }
 
         private var lastDeletedListItemIndex: Int? = null
         private var lastDeletedListItem: User? = null
         fun deleteItem(index: Int) {
-            notifyItemRemoved(index)
-
             lastDeletedListItemIndex = index
-            lastDeletedListItem = users.toMutableList().removeAt(index)
+            lastDeletedListItem = usersInternal.removeAt(index)
+
+            notifyItemRemoved(index)
+        }
+
+        fun undoDeletedItem() {
+            usersInternal.add(lastDeletedListItemIndex!!, lastDeletedListItem!!)
+            notifyItemInserted(lastDeletedListItemIndex!!)
+
+            lastDeletedListItemIndex = null
+            lastDeletedListItem = null
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): SwipeActionViewHolder {
@@ -145,11 +165,11 @@ class FirstFragment : Fragment() {
         }
 
         override fun onBindViewHolder(holder: SwipeActionViewHolder, position: Int) {
-            holder.bind(users[position])
+            holder.bind(usersInternal[position])
         }
 
         override fun getItemCount(): Int {
-            return users.size
+            return usersInternal.size
         }
 
         class SwipeActionViewHolder(private val binding: ListItemUserBinding) : RecyclerView.ViewHolder(binding.root) {

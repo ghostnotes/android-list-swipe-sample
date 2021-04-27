@@ -20,7 +20,6 @@ import co.ghostnotes.sample.list.swipe.databinding.ActivityMainBinding
 import com.google.android.material.snackbar.BaseTransientBottomBar
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.collect
-import timber.log.Timber
 
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
@@ -53,19 +52,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun observeViewModel() {
         swipeActionViewModel.test.observe(this) {
-            Timber.d("### liveData: $it")
         }
 
         lifecycleScope.launchWhenStarted {
-            Timber.d("### launchWhenStarted")
             swipeActionViewModel.swipeActionData.collect { data ->
-                Timber.d("### collect{}: action=$data")
                 when (data.action) {
-                    DELETE -> {
-                        showSnackbar(data)
-                    }
                     ARCHIVE -> {
-                        showSnackbar(data)
+                        showSnackbarForArchive()
+                    }
+                    DELETE -> {
+                        showSnackbarForDelete(data)
                     }
                     else -> { /* do nothing... */ }
                 }
@@ -73,14 +69,26 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showSnackbar(data: SwipeActionData) {
+    private fun showSnackbarForArchive() {
         Snackbar.make(
             binding.coordinator,
-            "SwipeAction=${data.action}, position=${data.position}",
+            "1 archived.",
             Snackbar.LENGTH_SHORT
         )
             .setAnimationMode(BaseTransientBottomBar.ANIMATION_MODE_SLIDE)
-            .setAction("Action", null)
+            .show()
+    }
+
+    private fun showSnackbarForDelete(data: SwipeActionData) {
+        Snackbar.make(
+            binding.coordinator,
+            "1 deleted.",
+            Snackbar.LENGTH_LONG
+        )
+            .setAnimationMode(BaseTransientBottomBar.ANIMATION_MODE_SLIDE)
+            .setAction("UNDO") {
+                swipeActionViewModel.undoDeletingSwipeAction(data.position)
+            }
             .show()
     }
 
